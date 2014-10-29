@@ -3,6 +3,7 @@
  * controls the brightness of LEDs on "analog" (PWM) output ports.
  */
 #include <Adafruit_NeoPixel.h>
+#include <avr/power.h>
 
 #define PIN 2
 #define NUMPIXELS 30
@@ -122,6 +123,8 @@ class fader {
 
 void setup()
 {
+    if (F_CPU == 16000000) clock_prescale_set(clock_div_1);
+
   //pins driven by analogWrite do not need to be declared as outputs
   pixels.begin();
   pixels.show(); // Initialize all pixels to 'off'
