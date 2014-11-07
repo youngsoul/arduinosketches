@@ -5,12 +5,11 @@
 // https://github.com/1ChicagoDave/Random_NeoPixel_Effects
 #include <Adafruit_NeoPixel.h>
 
-#define DEBOUNCE_TIME  500
-long button_bounce_time = 0L;
 
 // 0-5 volts for a 10bit converter the value is 0-1023
 int analogVal = 0;
 int micDCOffset = 1024/2;  // dc offset is vcc/2 so the 'zero' point is at 2.5 volts
+#define HIT_THRESHOLD  256
 
 // Processing State:
 // 0 - plasma state
@@ -18,12 +17,18 @@ int micDCOffset = 1024/2;  // dc offset is vcc/2 so the 'zero' point is at 2.5 v
 // 2 - off
 int state = 0;
 
+long now = 0;
+long hit_off_time = 0;
+
+boolean button_was_pressed = false;
+
 #define LOW_COLOR  0
 #define HIGH_COLOR  255
 
 int currentColorIndex = 0;
 #define PLASMA_TIME 250
-
+#define HIT_TIME  125
+#define PIXEL_OFF_DELAY 50
 
 // Mode Input
 #define MODE_INPUT_PIN 1
@@ -45,14 +50,28 @@ int currentColorIndex = 0;
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUMPIXELS, DATA_LINE_PIN, NEO_GRB + NEO_KHZ800);
 
 
+
+/**
+ * turn off the entire pixel strip
+ */
 void pixelStripOff() {
   for(int i=0; i<NUMPIXELS; i++) {
     pixels.setPixelColor(i, pixels.Color(0, 0, 0));
   }
   pixels.show();
+  delay(PIXEL_OFF_DELAY);
+}
+void pixelStripRed() {
+  for(int i=0; i<NUMPIXELS; i++) {
+    pixels.setPixelColor(i, pixels.Color(255, 0, 0));
+  }
+  pixels.show();
+  delay(PIXEL_OFF_DELAY);
 }
 
-
+/**
+ * turn on the pixel strip with a random color and initialize the hit_off_time
+ */
 void showHit() {
   long newColor = random(LOW_COLOR,HIGH_COLOR);
   byte newColorByte = newColor & 255;
@@ -61,10 +80,8 @@ void showHit() {
       pixels.setPixelColor(i, Wheel(newColorByte));
   }
   pixels.show();
+  hit_off_time = now + HIT_TIME;
   
-  delay(1000);
-  pixelStripOff();
- 
 }
 
 // Input a value 0 to 255 to get a color value.
@@ -88,12 +105,8 @@ void PlasmaPulse(int wait) {
   uint8_t brightness = 200;
   uint8_t brightnessOffset = 6;
   int8_t brightnessDirection = -1; // -1 bright to dim, +1 dim to bright
-
-//  for(i=0; i<NUMPIXELS; i++) {
-//    pixels.setPixelColor(i, pixels.Color(255, 255, 255));
-//  }
-//  pixels.show();
-//  delay(wait);
+  boolean btn = false;
+  
   //Adjust 60 and 90 to the starting and ending colors you want to fade between. 
   for(j=HIGH_COLOR; j>=LOW_COLOR; --j) {
     for(i=0; i<NUMPIXELS; i++) {
@@ -104,8 +117,13 @@ void PlasmaPulse(int wait) {
     if( brightness < brightnessOffset || brightness > 249 ) brightnessDirection *= -1;
     pixels.setBrightness(brightness);
     delay(wait);
+    if( brightness < brightnessOffset ) {
+      checkButton();
+      btn = doButtonPress();
+      if( btn == true ) return;
+    }
   }
-
+  
 // j<1170
   for(j=LOW_COLOR; j<HIGH_COLOR; j++) {
     for(i=0; i<NUMPIXELS; i++) {
@@ -116,6 +134,11 @@ void PlasmaPulse(int wait) {
     if( brightness < brightnessOffset || brightness > 249 ) brightnessDirection *= -1;
     pixels.setBrightness(brightness);
     delay(wait);
+    if( brightness < brightnessOffset ) {
+      checkButton();
+      btn = doButtonPress();
+      if( btn == true ) return;
+    }
   }
   
   for(i=0; i<NUMPIXELS; i++) {
@@ -123,7 +146,6 @@ void PlasmaPulse(int wait) {
   }
   pixels.show();
   delay(wait);
-
 }
 
 void setup()
@@ -137,12 +159,14 @@ void setup()
 
   randomSeed(millis());
 
-  state = 1; // plasma state
+  state = 0; // plasma state
   currentColorIndex = 0;
-  button_bounce_time = 0L;
+  now = 0;
+  hit_off_time = 0;
+  button_was_pressed = false;
   
   // initialize the MODE_INPUT_PIN pin as an INPUT
-  pinMode(MODE_INPUT_PIN, OUTPUT);
+  pinMode(MODE_INPUT_PIN, INPUT);
   
   // ...with a pullup
   digitalWrite(MODE_INPUT_PIN, HIGH);
@@ -152,42 +176,50 @@ void setup()
 
 }
 
-
-void loop() {
-//    PlasmaPulse(PLASMA_TIME);
-//  digitalWrite(MODE_INPUT_PIN,HIGH);
-//  showHit();
-//  delay(1000);
-//  digitalWrite(MODE_INPUT_PIN,LOW);
-//  delay(1000);
-  
-  
-  _loop();
+void checkButton() {
+  if ( digitalRead(MODE_INPUT_PIN) == 0) {
+    button_was_pressed = true;
+  }  
 }
 
-void _loop()
-{
-  long now = millis();
-  
-  if ( digitalRead(MODE_INPUT_PIN) == 0 && now > button_bounce_time) {  // if the button is pressed
-    button_bounce_time = ( now + DEBOUNCE_TIME );
-    
+/**
+ * @return 0 - button was not pressed, 1 - button was pressed
+ */
+boolean doButtonPress() {
+  boolean rtn = button_was_pressed;
+  if ( button_was_pressed == true ) {  // if the button is pressed
+    button_was_pressed = false;
+    pixels.setBrightness(250);
+    pixelStripRed();
+    delay(500);
     state += 1;
     if( state >= 3 ) state = 0;
     pixelStripOff();
-    if( state == 1 ) {
-        pixels.setBrightness(250);
-    }
-
+    
+    delay(1000); // sit here for a second to give user a chance to release the button 
   } 
+  return rtn;
+  
+}
+
+void loop()
+{
+  now = millis();
+  if( hit_off_time > 0 && now > hit_off_time) {
+    pixelStripOff();
+    hit_off_time = 0;
+  }
+  
+  checkButton();
+  doButtonPress();
   
   if( state == 0 ) {
+    hit_off_time = 0;
     PlasmaPulse(PLASMA_TIME);
   } else if( state == 1 ) {
     analogVal = analogRead( MIC_INPUT_PIN );
-    if( analogVal > micDCOffset + 1 ) {
+    if( hit_off_time == 0 && analogVal > micDCOffset + HIT_THRESHOLD ) {
       showHit();
     }
-    
   }
 }
