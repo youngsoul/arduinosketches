@@ -1,10 +1,11 @@
 /*
- * LedBrightness sketch
- * controls the brightness of LEDs on "analog" (PWM) output ports.
+ * Much of this code has been borrowed or inspired by the Adafruit NeoPixel library
+ * Adafruit provides so much for DIY electronics.  Please consider buying from them.
+ *  www.adafruit.com
+ * Plasma/Color Switcher/Theater sketch
  */
 // https://github.com/1ChicagoDave/Random_NeoPixel_Effects
 #include <Adafruit_NeoPixel.h>
-
 
 // 0-5 volts for a 10bit converter the value is 0-1023
 int analogVal = 0;
@@ -12,9 +13,11 @@ int micDCOffset = 1024/2;  // dc offset is vcc/2 so the 'zero' point is at 2.5 v
 #define HIT_THRESHOLD  256
 
 // Processing State:
-// 0 - plasma state
-// 1 - mic trigger
-// 2 - off
+// 0 - plasma/fader state
+// 1 - on solid for random duration, no fade, then new color
+// 2 - mic trigger
+// 3 - theater chase
+// 4 - off
 int state = 0;
 
 long now = 0;
@@ -29,6 +32,7 @@ int currentColorIndex = 0;
 #define PLASMA_TIME 250
 #define HIT_TIME  125
 #define PIXEL_OFF_DELAY 50
+#define PIXEL_STATE_DELAY 1000
 
 // Mode Input
 #define MODE_INPUT_PIN 1
@@ -61,18 +65,65 @@ void pixelStripOff() {
   pixels.show();
   delay(PIXEL_OFF_DELAY);
 }
+
 void pixelStripRed() {
   for(int i=0; i<NUMPIXELS; i++) {
     pixels.setPixelColor(i, pixels.Color(255, 0, 0));
   }
   pixels.show();
-  delay(PIXEL_OFF_DELAY);
+  delay(PIXEL_STATE_DELAY);
+}
+void pixelStripGreen() {
+  for(int i=0; i<NUMPIXELS; i++) {
+    pixels.setPixelColor(i, pixels.Color(0, 255, 0));
+  }
+  pixels.show();
+  delay(PIXEL_STATE_DELAY);
+}
+void pixelStripBlue() {
+  for(int i=0; i<NUMPIXELS; i++) {
+    pixels.setPixelColor(i, pixels.Color(0, 0, 255));
+  }
+  pixels.show();
+  delay(PIXEL_STATE_DELAY);
+}
+void pixelStripYellow() {
+  for(int i=0; i<NUMPIXELS; i++) {
+    pixels.setPixelColor(i, pixels.Color(0, 255, 255));
+  }
+  pixels.show();
+  delay(PIXEL_STATE_DELAY);
+}
+
+// From the Adafruit strandtest
+//Theatre-style crawling lights with rainbow effect
+void theaterChaseRainbow(uint8_t wait) {
+    boolean btn = false;
+
+  for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
+    for (int q=0; q < 3; q++) {
+        for (int i=0; i < pixels.numPixels(); i=i+3) {
+          pixels.setPixelColor(i+q, Wheel( (i+j) % 255));    //turn every third pixel on
+        }
+        pixels.show();
+       
+        delay(wait);
+       
+        for (int i=0; i < pixels.numPixels(); i=i+3) {
+          pixels.setPixelColor(i+q, 0);        //turn every third pixel off
+        }
+    }
+    checkButton();
+    btn = doButtonPress();
+    if( btn == true ) return;
+
+  }
 }
 
 /**
  * turn on the pixel strip with a random color and initialize the hit_off_time
  */
-void showHit() {
+void randomColorOn() {
   long newColor = random(LOW_COLOR,HIGH_COLOR);
   byte newColorByte = newColor & 255;
   
@@ -80,7 +131,6 @@ void showHit() {
       pixels.setPixelColor(i, Wheel(newColorByte));
   }
   pixels.show();
-  hit_off_time = now + HIT_TIME;
   
 }
 
@@ -168,10 +218,6 @@ void setup()
   // initialize the MODE_INPUT_PIN pin as an INPUT
   pinMode(MODE_INPUT_PIN, INPUT);
   
-  // ...with a pullup
-  digitalWrite(MODE_INPUT_PIN, HIGH);
- 
-  
   pixels.setBrightness(255);
 
 }
@@ -190,12 +236,39 @@ boolean doButtonPress() {
   if ( button_was_pressed == true ) {  // if the button is pressed
     button_was_pressed = false;
     pixels.setBrightness(250);
-    pixelStripRed();
-    delay(500);
     state += 1;
-    if( state >= 3 ) state = 0;
-    pixelStripOff();
-    
+    switch(state) {
+     case 0: // plasma state
+       pixelStripRed();
+       pixelStripOff();
+      break;
+     
+     case 1: // solid on
+       pixelStripGreen();
+       pixelStripOff();
+       hit_off_time = 0;
+      break;
+     
+     case 2: // sound activated
+       pixelStripBlue();
+       hit_off_time = 0;
+       pixelStripOff();
+      break;
+     
+     case 3: // theater chase
+       pixelStripYellow();
+       pixelStripOff();
+       break;
+       
+     case 4: // turn it off
+       pixelStripOff();
+      break;
+     
+     default: // then reset back to original state
+      state = 0;
+      break;
+      
+    }    
     delay(1000); // sit here for a second to give user a chance to release the button 
   } 
   return rtn;
@@ -205,21 +278,46 @@ boolean doButtonPress() {
 void loop()
 {
   now = millis();
-  if( hit_off_time > 0 && now > hit_off_time) {
-    pixelStripOff();
-    hit_off_time = 0;
-  }
   
   checkButton();
   doButtonPress();
   
-  if( state == 0 ) {
-    hit_off_time = 0;
-    PlasmaPulse(PLASMA_TIME);
-  } else if( state == 1 ) {
-    analogVal = analogRead( MIC_INPUT_PIN );
-    if( hit_off_time == 0 && analogVal > micDCOffset + HIT_THRESHOLD ) {
-      showHit();
-    }
-  }
+  switch(state) {
+     case 0: // plasma state
+        PlasmaPulse(PLASMA_TIME);
+      break;
+     
+     case 1: // solid on
+        if( now > hit_off_time) {
+          randomColorOn();
+          hit_off_time = now + (random(2,10)*1000);
+        }
+      break;
+     
+     case 2: // sound activated
+        if( hit_off_time > 0 && now > hit_off_time ) {
+          pixelStripOff();
+          hit_off_time = 0;
+        }
+        analogVal = analogRead( MIC_INPUT_PIN );
+        if( hit_off_time == 0 && analogVal > micDCOffset + HIT_THRESHOLD ) {
+          randomColorOn();
+          hit_off_time = now + HIT_TIME;
+        }
+      
+      break;
+     
+     case 3: // theater chase
+       theaterChaseRainbow(100);
+       break;
+       
+     case 4: // no colors
+       pixelStripOff();
+      break;
+     
+     default: // then reset back to original state
+      state = 0;
+      break;
+  
+  }  
 }
