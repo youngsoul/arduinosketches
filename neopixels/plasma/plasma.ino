@@ -3,8 +3,8 @@
  * Adafruit provides so much for DIY electronics.  Please consider buying from them.
  *  www.adafruit.com
  * Plasma/Color Switcher/Theater sketch
+ * https://github.com/youngsoul/arduinosketches/tree/master/neopixels/plasma
  */
-// https://github.com/1ChicagoDave/Random_NeoPixel_Effects
 #include <Adafruit_NeoPixel.h>
 
 // 0-5 volts for a 10bit converter the value is 0-1023
