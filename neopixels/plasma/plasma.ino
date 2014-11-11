@@ -265,7 +265,9 @@ boolean doButtonPress() {
       break;
      
      default: // then reset back to original state
-      state = 0;
+       state = 0;
+       pixelStripRed();
+       pixelStripOff();
       break;
       
     }    
