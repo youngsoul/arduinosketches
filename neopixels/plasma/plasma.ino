@@ -10,7 +10,12 @@
 // 0-5 volts for a 10bit converter the value is 0-1023
 int analogVal = 0;
 int micDCOffset = 1024/2;  // dc offset is vcc/2 so the 'zero' point is at 2.5 volts
-#define HIT_THRESHOLD  256
+// HIT_THRESHOLD is the amount above the micDCOffset that will trigger a hit
+// Maximum value is 512
+#define HIT_THRESHOLD  400
+
+// HIT_TIME is the number of milliseconds before looking for another hit
+#define HIT_TIME  325
 
 // Processing State:
 // 0 - plasma/fader state
@@ -30,7 +35,6 @@ boolean button_was_pressed = false;
 
 int currentColorIndex = 0;
 #define PLASMA_TIME 250
-#define HIT_TIME  125
 #define PIXEL_OFF_DELAY 50
 #define PIXEL_STATE_DELAY 1000
 
